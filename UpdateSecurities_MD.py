@@ -146,44 +146,41 @@ for currency in currencylist:
 		except:
 			print 'Currency %s (%s) - Invalid currency'%(name,symbol)
 
-   # time.sleep(2)  # breathe...it's a free API, don't overwhelm or they'll just fail our requests
+# security update
+for security, sDate, acct, curr in zip(mapCurrent, mapDates, mapAccounts, mapCurrency):
+	symbol = security[0]
+	name = security[2]
+	func = 'TIME_SERIES_DAILY&symbol='
+	# 
+	recentQuoteDate = sDate[1]   # Set recentQuoteDate to the last security updated date just in case getQuote fails
+	skip = False   # Set to True when data needed for update fails
 
+	# print security, curr, sDate
 
+	try:
+		getQuote = getLastRefreshedTimeSeries(func, symbol, apikey)
+		recentQuoteDate = str(getQuote['Meta Data']['3. Last Refreshed'])[:10]
+		high = float(getQuote['Time Series (Daily)'][recentQuoteDate]['2. high'])
+		low = float(getQuote['Time Series (Daily)'][recentQuoteDate]['3. low'])
+		close = float(getQuote['Time Series (Daily)'][recentQuoteDate]['4. close'])
+		volume = long(float(getQuote['Time Series (Daily)'][recentQuoteDate]['5. volume']))
 
-# for security, sDate, acct, curr in zip(mapCurrent, mapDates, mapAccounts, mapCurrency):
-# 	symbol = security[0]
-# 	name = security[2]
-# 	func = 'TIME_SERIES_DAILY&symbol='
-# 	# 
-# 	recentQuoteDate = sDate[1]   # Set recentQuoteDate to the last security updated date just in case getQuote fails
-# 	skip = False   # Set to True when data needed for update fails
+		# print getQuote
+		# print security
+		# print symbol, close, high, low, volume , recentQuoteDate
+	except:
+		print 'Security {0} ({1}): Invalid ticker symbol'.format(name,symbol)
+		skip = True
 
-# 	# print security, curr, sDate
+	# if not already updated or override has been specified AND retrieval didn't fail
+	if (recentQuoteDate != sDate[1] or override) and not skip:
+		rel_curr = curr[1]
 
-# 	try:
-# 		getQuote = getLastRefreshedTimeSeries(func, symbol, apikey)
-# 		recentQuoteDate = str(getQuote['Meta Data']['3. Last Refreshed'])[:10]
-# 		high = float(getQuote['Time Series (Daily)'][recentQuoteDate]['2. high'])
-# 		low = float(getQuote['Time Series (Daily)'][recentQuoteDate]['3. low'])
-# 		close = float(getQuote['Time Series (Daily)'][recentQuoteDate]['4. close'])
-# 		volume = long(float(getQuote['Time Series (Daily)'][recentQuoteDate]['5. volume']))
-
-# 		# print getQuote
-# 		# print security
-# 		# print symbol, close, high, low, volume , recentQuoteDate
-# 	except:
-# 		print 'Security {0} ({1}): Invalid ticker symbol'.format(name,symbol)
-# 		skip = True
-
-# 	# if not already updated or override has been specified AND retrieval didn't fail
-# 	if (recentQuoteDate != sDate[1] or override) and not skip:
-# 		rel_curr = curr[1]
-
-# 		part = recentQuoteDate.split("-")
-# 		lastRefreshDate = part[0]+part[1]+part[2]
-# 		lastRefreshDate = int(lastRefreshDate)
-# 		setPriceForSecurity(root.getCurrencies(), symbol, close, high, low, volume, lastRefreshDate, rel_curr)
-# 		setPriceForSecurity(root.getCurrencies(), symbol, close, high, low, volume, 0, rel_curr)
-# 		print 'Security %s (%s):- updated on %s: %s %s( H:%s, L:%s, V:%s )'%(name,symbol,recentQuoteDate,root.getCurrencies().getCurrencyByIDString(rel_curr),close,high,low,volume)
-# 		skip = False
+		part = recentQuoteDate.split("-")
+		lastRefreshDate = part[0]+part[1]+part[2]
+		lastRefreshDate = int(lastRefreshDate)
+		setPriceForSecurity(root.getCurrencies(), symbol, close, high, low, volume, lastRefreshDate, rel_curr)
+		setPriceForSecurity(root.getCurrencies(), symbol, close, high, low, volume, 0, rel_curr)
+		print 'Security %s (%s):- updated on %s: %s %s( H:%s, L:%s, V:%s )'%(name,symbol,recentQuoteDate,root.getCurrencies().getCurrencyByIDString(rel_curr),close,high,low,volume)
+		skip = False
 
