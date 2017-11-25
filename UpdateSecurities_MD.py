@@ -18,12 +18,26 @@ apikey = 'YOUR API KEY'
 
 override = True   # used to add quote information even if data for date already exists
 
-
 mapCurrent = []
 mapDates = []
 mapCurrency = []
 mapAccounts = []
 # =================================================================================
+
+# get my private apikey from hidden settings.py file ------------------------------
+import os
+import sys
+
+# add current file dir to path for importing from settings.py
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__))) # set to path file dir
+
+try:
+	from settings import apikey
+	print 'Use my API key - {}'.format(apikey)
+except ImportError:
+	pass
+# =================================================================================
+
 
 def setPriceForSecurity(currencies, symbol, price, high, low, volume, dateint, relative_curr):
 	
