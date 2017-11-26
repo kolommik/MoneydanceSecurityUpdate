@@ -17,6 +17,7 @@ except ImportError:
 apikey = 'YOUR API KEY'
 
 override = True   # used to add quote information even if data for date already exists
+HIST_DEPTH = 14
 
 mapCurrent = []
 mapDates = []
@@ -39,7 +40,7 @@ except ImportError:
 # =================================================================================
 
 
-def setPriceForSecurity(currencies, symbol, price, high, low, volume, dateint, relative_curr):
+def setPriceForSecurity(currencies, symbol, price, volume, dateint, relative_curr):
 	
 	use_curr = currencies.getCurrencyByIDString(relative_curr) 
 	# print 'Setting price for {0}: {1} {2} '.format(symbol,price, use_curr)
@@ -50,8 +51,6 @@ def setPriceForSecurity(currencies, symbol, price, high, low, volume, dateint, r
 		return
 	if dateint:
 		snapsec = security.setSnapshotInt(dateint, price, use_curr)
-		# snapsec.setUserDailyHigh(1/high)
-		# snapsec.setUserDailyLow(1/low)
 		snapsec.setDailyVolume(volume)
 		snapsec.syncItem()
 
@@ -109,6 +108,7 @@ def buildUrl(func, symbol, apikey):
 
 def getLastRefreshedTimeSeries(func, symbol, apikey):
 	url = buildUrl(func, symbol, apikey)
+	# print url
 	req = Request(url)
 	# Attempt to open the URL, print errors if there are any, otherwise read results 
 	try: 
@@ -128,13 +128,16 @@ def getLastRefreshedTimeSeries(func, symbol, apikey):
 	# convert from JSON data to Python dict and return to calling program
 	return json.loads(content)
 
+def date_to_int(date):
+	part = date.split("-")
+	return int(part[0]+part[1]+part[2])
+
 #===============================================================================
 # Iterate through symbols here
 root=moneydance.getCurrentAccountBook()
 ra = root.getRootAccount() 
 
 loadAccounts(ra)
-
 
 
 # Update all currencies we can find with most recent currency quote
@@ -149,6 +152,7 @@ for currency in currencylist:
 		# print symbol, name
 		try:
 			getCurrency = getLastRefreshedTimeSeries(func, symbol, apikey)
+			print getCurrency
 			recentCurrencyDate = str(getCurrency['Realtime Currency Exchange Rate']['6. Last Refreshed'])[:10]
 			close = float(getCurrency['Realtime Currency Exchange Rate']['5. Exchange Rate'])
 			part = recentCurrencyDate.split("-")
@@ -160,8 +164,9 @@ for currency in currencylist:
 		except:
 			print 'Currency %s (%s) - Invalid currency'%(name,symbol)
 
+
 # security update
-for security, sDate, acct, curr in zip(mapCurrent, mapDates, mapAccounts, mapCurrency):
+for security, sDate, acct, curr in zip(mapCurrent, mapDates, mapAccounts, mapCurrency)[:]:
 	symbol = security[0]
 	name = security[2]
 	func = 'TIME_SERIES_DAILY&symbol='
@@ -171,16 +176,21 @@ for security, sDate, acct, curr in zip(mapCurrent, mapDates, mapAccounts, mapCur
 
 	# print security, curr, sDate
 
+	hist_data = []
 	try:
 		getQuote = getLastRefreshedTimeSeries(func, symbol, apikey)
 		recentQuoteDate = str(getQuote['Meta Data']['3. Last Refreshed'])[:10]
-		high = float(getQuote['Time Series (Daily)'][recentQuoteDate]['2. high'])
-		low = float(getQuote['Time Series (Daily)'][recentQuoteDate]['3. low'])
-		close = float(getQuote['Time Series (Daily)'][recentQuoteDate]['4. close'])
-		volume = long(float(getQuote['Time Series (Daily)'][recentQuoteDate]['5. volume']))
+		last_close = float(getQuote['Time Series (Daily)'][recentQuoteDate]['4. close'])
+		last_volume = long(float(getQuote['Time Series (Daily)'][recentQuoteDate]['5. volume']))
 
-		# print getQuote
-		# print security
+		# load history date to hist_data[]
+		dates = getQuote['Time Series (Daily)'].keys()
+		dates.sort(reverse=False)
+		for cdate in dates[-HIST_DEPTH:]:
+			close = float(getQuote['Time Series (Daily)'][cdate]['4. close'])
+			volume = long(float(getQuote['Time Series (Daily)'][cdate]['5. volume']))
+			hist_data.append((cdate, date_to_int(cdate), close, volume))
+
 		# print symbol, close, high, low, volume , recentQuoteDate
 	except:
 		print 'Security {0} ({1}): Invalid ticker symbol'.format(name,symbol)
@@ -189,12 +199,14 @@ for security, sDate, acct, curr in zip(mapCurrent, mapDates, mapAccounts, mapCur
 	# if not already updated or override has been specified AND retrieval didn't fail
 	if (recentQuoteDate != sDate[1] or override) and not skip:
 		rel_curr = curr[1]
+		RefreshDate = date_to_int(recentQuoteDate)
 
-		part = recentQuoteDate.split("-")
-		lastRefreshDate = part[0]+part[1]+part[2]
-		lastRefreshDate = int(lastRefreshDate)
-		setPriceForSecurity(root.getCurrencies(), symbol, close, high, low, volume, lastRefreshDate, rel_curr)
-		setPriceForSecurity(root.getCurrencies(), symbol, close, high, low, volume, 0, rel_curr)
-		print 'Security %s (%s):- updated on %s: %s %s( H:%s, L:%s, V:%s )'%(name,symbol,recentQuoteDate,root.getCurrencies().getCurrencyByIDString(rel_curr),close,high,low,volume)
+		if len(hist_data)>0:
+			for QuoteDate, RefreshDate, close, volume in hist_data:
+				print 'Security {0} Date: {1} - {2}  {4}   vol:{3}'.format(symbol, QuoteDate, close, volume, root.getCurrencies().getCurrencyByIDString(rel_curr))
+				setPriceForSecurity(root.getCurrencies(), symbol, close, volume, RefreshDate, rel_curr)
+
+		setPriceForSecurity(root.getCurrencies(), symbol, last_close, last_volume, 0, rel_curr)
+		print 'DONE - Security %s (%s):- updated on %s: %s %s( V:%s )'%(name,symbol,recentQuoteDate,root.getCurrencies().getCurrencyByIDString(rel_curr),close,volume)
 		skip = False
 
