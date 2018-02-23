@@ -45,17 +45,19 @@ def setPriceForSecurity(currencies, symbol, price, volume, dateint, relative_cur
 	use_curr = currencies.getCurrencyByIDString(relative_curr) 
 	# print 'Setting price for {0}: {1} {2} '.format(symbol,price, use_curr)
 
-	price = 1/price
-	security = currencies.getCurrencyByTickerSymbol(symbol)
-	if not security:
-		return
-	if dateint:
-		snapsec = security.setSnapshotInt(dateint, price, use_curr)
-		snapsec.setDailyVolume(volume)
-		snapsec.syncItem()
+	if price!=0:
+		price = 1/price
+		security = currencies.getCurrencyByTickerSymbol(symbol)
+		if not security:
+			return
+		if dateint:
+			snapsec = security.setSnapshotInt(dateint, price, use_curr)
+			snapsec.setDailyVolume(volume)
+			snapsec.syncItem()
 
-	security.setUserRate(price, use_curr)
-	security.syncItem()  
+		security.setUserRate(price, use_curr)
+		security.syncItem()  
+	return
 
 def setPriceForCurrency(currencies, symbol, price, dateint):
 	#print 'setting price for ' + symbol + ': $' + str(price) 
@@ -168,6 +170,8 @@ for currency in currencylist:
 # security update
 for security, sDate, acct, curr in zip(mapCurrent, mapDates, mapAccounts, mapCurrency)[:]:
 	symbol = security[0]
+	# if symbol not in ['FXDE.ME']:
+	# 	continue
 	name = security[2]
 	func = 'TIME_SERIES_DAILY&symbol='
 	# 
