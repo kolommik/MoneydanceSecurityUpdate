@@ -170,8 +170,13 @@ for currency in currencylist:
 # security update
 for security, sDate, acct, curr in zip(mapCurrent, mapDates, mapAccounts, mapCurrency)[:]:
 	symbol = security[0]
-	# if symbol not in ['FXDE.ME']:
-	# 	continue
+	# if symbol not in ['MTSS.ME']:
+	# if symbol in ['GXC','SCHR','SCHM','SCHH','VSS',
+	# 			  'IAU','ERUS','EWY','FXDE.ME','FXJP.ME',
+	# 			  'MTSS.ME','MOEX.ME','NLMK.ME','SBERP.ME',
+	# 			  'FXRU.ME','FXRL.ME','FXCN.ME','FXRU.ME',
+	# 			  'FXIT.ME','SNGSP.ME']:
+	#  	continue
 	name = security[2]
 	func = 'TIME_SERIES_DAILY&symbol='
 	# 
@@ -197,6 +202,7 @@ for security, sDate, acct, curr in zip(mapCurrent, mapDates, mapAccounts, mapCur
 
 		# print symbol, close, high, low, volume , recentQuoteDate
 	except:
+		print name, symbol
 		print 'Security {0} ({1}): Invalid ticker symbol'.format(name,symbol)
 		skip = True
 
