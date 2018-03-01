@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# coding: utf-8
 # Python script to be run in Moneydance to perform amazing feats of financial scripting
 
 from com.infinitekind.moneydance.model import *
@@ -141,7 +142,7 @@ ra = root.getRootAccount()
 
 loadAccounts(ra)
 
-
+print '- START ------------------------------------------------------------------------------------'
 # Update all currencies we can find with most recent currency quote
 func = 'CURRENCY_EXCHANGE_RATE&to_currency=RUB&from_currency='
 
@@ -166,6 +167,7 @@ for currency in currencylist:
 		except:
 			print 'Currency %s (%s) - Invalid currency'%(name,symbol)
 
+print '- SECURITY -------------------------------------------------------------------------------'
 
 # security update
 for security, sDate, acct, curr in zip(mapCurrent, mapDates, mapAccounts, mapCurrency)[:]:
@@ -176,7 +178,7 @@ for security, sDate, acct, curr in zip(mapCurrent, mapDates, mapAccounts, mapCur
 	# 			  'MTSS.ME','MOEX.ME','NLMK.ME','SBERP.ME',
 	# 			  'FXRU.ME','FXRL.ME','FXCN.ME','FXRU.ME',
 	# 			  'FXIT.ME','SNGSP.ME']:
-	#  	continue
+	# 	continue
 	name = security[2]
 	func = 'TIME_SERIES_DAILY&symbol='
 	# 
@@ -203,7 +205,10 @@ for security, sDate, acct, curr in zip(mapCurrent, mapDates, mapAccounts, mapCur
 		# print symbol, close, high, low, volume , recentQuoteDate
 	except:
 		print name, symbol
-		print 'Security {0} ({1}): Invalid ticker symbol'.format(name,symbol)
+		print '     >>>  ---ERROR---- Security {0} ({1}): Invalid ticker symbol'.format(
+				name.encode('utf-8'),
+				symbol.encode('utf-8')
+				).decode('utf-8')
 		skip = True
 
 	# if not already updated or override has been specified AND retrieval didn't fail
