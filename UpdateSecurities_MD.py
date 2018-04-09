@@ -152,7 +152,7 @@ for currency in currencylist:
 	if (currency.getCurrencyType() == currency.getCurrencyType().valueOf("CURRENCY")):
 		symbol = currency.getIDString()
 		name = currency.getName()
-		# print symbol, name
+		print symbol, name
 		try:
 			getCurrency = getLastRefreshedTimeSeries(func, symbol, apikey)
 			print getCurrency
