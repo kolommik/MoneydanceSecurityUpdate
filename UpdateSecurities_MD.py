@@ -107,6 +107,7 @@ def buildUrl(func, symbol, apikey):
 	# Creates url used for JSON quote return
 	# Visit www.alphavantage.co to obtain a free api key
 	url = 'https://www.alphavantage.co/query?function=' + func + symbol + '&outputsize=compact&apikey=' + apikey
+	print url
 	return url
 
 def getLastRefreshedTimeSeries(func, symbol, apikey):
@@ -173,12 +174,16 @@ print '- SECURITY --------------------------------------------------------------
 for security, sDate, acct, curr in zip(mapCurrent, mapDates, mapAccounts, mapCurrency)[:]:
 	symbol = security[0]
 	# if symbol not in ['MTSS.ME']:
-	# if symbol in ['GXC','SCHR','SCHM','SCHH','VSS',
-	# 			  'IAU','ERUS','EWY','FXDE.ME','FXJP.ME',
-	# 			  'MTSS.ME','MOEX.ME','NLMK.ME','SBERP.ME',
-	# 			  'FXRU.ME','FXRL.ME','FXCN.ME','FXRU.ME',
-	# 			  'FXIT.ME','SNGSP.ME']:
-	# 	continue
+	if symbol in ['MY_001',
+				  # 'SNGSP.ME',
+				  # 'GXC','SCHR','SCHM','SCHH','VSS',
+				  # 'IAU','ERUS','EWY',
+				  # 'FXDE.ME','FXJP.ME',
+				  # 'MTSS.ME','MOEX.ME','NLMK.ME','SBERP.ME',
+				  # 'FXRU.ME','FXRL.ME','FXCN.ME','FXRU.ME',
+				  # 'FXIT.ME',
+				  '' ]:
+		continue
 	name = security[2]
 	func = 'TIME_SERIES_DAILY&symbol='
 	# 
