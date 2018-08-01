@@ -18,7 +18,9 @@ except ImportError:
 apikey = 'YOUR API KEY'
 
 override = True   # used to add quote information even if data for date already exists
-HIST_DEPTH = 14
+HIST_DEPTH = 25
+IF_ERROR_REPAT_TIMES = 2
+
 
 mapCurrent = []
 mapDates = []
@@ -107,28 +109,36 @@ def buildUrl(func, symbol, apikey):
 	# Creates url used for JSON quote return
 	# Visit www.alphavantage.co to obtain a free api key
 	url = 'https://www.alphavantage.co/query?function=' + func + symbol + '&outputsize=compact&apikey=' + apikey
-	print url
+	# print url
 	return url
 
 def getLastRefreshedTimeSeries(func, symbol, apikey):
 	url = buildUrl(func, symbol, apikey)
-	# print url
+	print url
+
 	req = Request(url)
+
 	# Attempt to open the URL, print errors if there are any, otherwise read results 
-	try: 
-		resp = urlopen(req)
-		content = resp.read().decode().strip()
-	except IOError, e:
-		if hasattr(e, 'code'): # HTTPError
-			message = 'http error code: ', e.code
-			print message
-		elif hasattr(e, 'reason'): # URLError
-			message = "can't connect, reason: ", e.reason
-			print message
-			print e
-		else:
-			content = resp.read()
-			raise
+	i = IF_ERROR_REPAT_TIMES
+	while i>0:
+		try: 
+			resp = urlopen(req)
+			content = resp.read().decode().strip()
+			i = 0
+		except IOError, e:
+			i -= 1
+			time.sleep(1)			
+
+			if hasattr(e, 'code'): # HTTPError
+				message = 'http error code: ', e.code
+				print message
+			elif hasattr(e, 'reason'): # URLError
+				message = "can't connect, reason: ", e.reason
+				print message
+				print e
+			else:
+				content = resp.read()
+				raise
 	# convert from JSON data to Python dict and return to calling program
 	return json.loads(content)
 
@@ -188,17 +198,16 @@ for security, sDate, acct, curr in zip(mapCurrent, mapDates, mapAccounts, mapCur
 	func = 'TIME_SERIES_DAILY&symbol='
 	# 
 	recentQuoteDate = sDate[1]   # Set recentQuoteDate to the last security updated date just in case getQuote fails
-	skip = False   # Set to True when data needed for update fails
-
 	# print security, curr, sDate
-
 	hist_data = []
+	skip = False   # Set to True when data needed for update fails
+	print '\n'
+
 	try:
 		getQuote = getLastRefreshedTimeSeries(func, symbol, apikey)
 		recentQuoteDate = str(getQuote['Meta Data']['3. Last Refreshed'])[:10]
 		last_close = float(getQuote['Time Series (Daily)'][recentQuoteDate]['4. close'])
 		last_volume = long(float(getQuote['Time Series (Daily)'][recentQuoteDate]['5. volume']))
-
 		# load history date to hist_data[]
 		dates = getQuote['Time Series (Daily)'].keys()
 		dates.sort(reverse=False)
@@ -206,15 +215,14 @@ for security, sDate, acct, curr in zip(mapCurrent, mapDates, mapAccounts, mapCur
 			close = float(getQuote['Time Series (Daily)'][cdate]['4. close'])
 			volume = long(float(getQuote['Time Series (Daily)'][cdate]['5. volume']))
 			hist_data.append((cdate, date_to_int(cdate), close, volume))
-
 		# print symbol, close, high, low, volume , recentQuoteDate
 	except:
+		skip = True
 		print name, symbol
 		print '     >>>  ---ERROR---- Security {0} ({1}): Invalid ticker symbol'.format(
 				name.encode('utf-8'),
 				symbol.encode('utf-8')
 				).decode('utf-8')
-		skip = True
 
 	# if not already updated or override has been specified AND retrieval didn't fail
 	if (recentQuoteDate != sDate[1] or override) and not skip:
