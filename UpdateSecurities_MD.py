@@ -20,6 +20,7 @@ apikey = 'YOUR API KEY'
 override = True   # used to add quote information even if data for date already exists
 HIST_DEPTH = 25
 IF_ERROR_REPAT_TIMES = 2
+TIME_DELAY_SEC = 20
 
 
 mapCurrent = []
@@ -127,7 +128,7 @@ def getLastRefreshedTimeSeries(func, symbol, apikey):
 			i = 0
 		except IOError, e:
 			i -= 1
-			time.sleep(1)			
+			time.sleep(TIME_DELAY_SEC)			
 
 			if hasattr(e, 'code'): # HTTPError
 				message = 'http error code: ', e.code
@@ -165,6 +166,7 @@ for currency in currencylist:
 		name = currency.getName()
 		print symbol, name
 		try:
+			time.sleep(TIME_DELAY_SEC)
 			getCurrency = getLastRefreshedTimeSeries(func, symbol, apikey)
 			print getCurrency
 			recentCurrencyDate = str(getCurrency['Realtime Currency Exchange Rate']['6. Last Refreshed'])[:10]
@@ -204,6 +206,7 @@ for security, sDate, acct, curr in zip(mapCurrent, mapDates, mapAccounts, mapCur
 	print '\n'
 
 	try:
+		time.sleep(TIME_DELAY_SEC)
 		getQuote = getLastRefreshedTimeSeries(func, symbol, apikey)
 		recentQuoteDate = str(getQuote['Meta Data']['3. Last Refreshed'])[:10]
 		last_close = float(getQuote['Time Series (Daily)'][recentQuoteDate]['4. close'])
