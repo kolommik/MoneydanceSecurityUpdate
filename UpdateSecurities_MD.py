@@ -7,45 +7,80 @@ from urllib2 import Request, urlopen, URLError, HTTPError
 import json
 import sys
 import time
+import os
+import xml.etree.ElementTree as elementtree
+from datetime import datetime
+from datetime import timedelta
 
 try:
 	import ssl
 except ImportError:
 	print "error: no ssl support"
 
-# =================================================================================
-# Set to your API key with alphavantage.co
-apikey = 'YOUR API KEY'
 
-override = True   # used to add quote information even if data for date already exists
-HIST_DEPTH = 25
-IF_ERROR_REPAT_TIMES = 2
+# = CONSTANTS ====================================================================
+# Set to your API key with alphavantage.co
+APIKEY = 'YOUR API KEY'
+
+OVERRIDE = True   # used to add quote information even if data for date already exists
+HIST_DEPTH = 30   # how many history days we want to get for load
+
+IF_ERROR_REPAT_TIMES = 1  # always =1. Times to resend information
+
 TIME_DELAY_SEC = 20
 
+DEBUG = True   # True or False for debug output
+DEBUG = False   # True or False for debug output
 
-mapCurrent = []
-mapDates = []
-mapCurrency = []
-mapAccounts = []
+SEC_FUNC = 'TIME_SERIES_DAILY&symbol='
+
+# =================================================================================
+CBR_CURRENCY_CODES = {
+    'USD': 'R01235',      # US_Dollar
+    'EUR': 'R01239'       # Euro  
+}
+
+SECURITY_EXCLUDE_LIST = [
+	'',
+	'MY_001'
+]
+
+FILES = {
+	'FXAU.ME': '8_FXAU.csv',
+	'FXCN.ME': '8_FXCN.csv',
+	'FXDE.ME': '8_FXDE.csv',
+	'FXGD.ME': '8_FXGD.csv',
+	'FXIT.ME': '8_FXIT.csv',
+	'FXJP.ME': '8_FXJP.csv',
+	'FXMM.ME': '8_FXMM.csv',
+	'FXRB.ME': '8_FXRB.csv',
+	'FXRL.ME': '8_FXRL.csv',
+	'FXRU.ME': '8_FXRU.csv',
+	'FXUK.ME': '8_FXUK.csv',
+	'FXUS.ME': '8_FXUS.csv',
+}
+
+# =================================================================================
+AccountsSecurityList = {}
+
 # =================================================================================
 
-# get my private apikey from hidden settings.py file ------------------------------
-import os
-import sys
-
+# # get my private APIKEY from hidden settings.py file ------------------------------
 # add current file dir to path for importing from settings.py
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__))) # set to path file dir
 
 try:
-	from settings import apikey
-	print 'Use my API key - {}'.format(apikey)
+	from settings import APIKEY
+	print 'Use my API key - {0}'.format(APIKEY)
+
+	from settings import FILESPATH
+	print 'File Path  - {0}'.format(FILESPATH)
 except ImportError:
 	pass
 # =================================================================================
 
 
 def setPriceForSecurity(currencies, symbol, price, volume, dateint, relative_curr):
-	
 	use_curr = currencies.getCurrencyByIDString(relative_curr) 
 	# print 'Setting price for {0}: {1} {2} '.format(symbol,price, use_curr)
 
@@ -64,59 +99,92 @@ def setPriceForSecurity(currencies, symbol, price, volume, dateint, relative_cur
 	return
 
 def setPriceForCurrency(currencies, symbol, price, dateint):
-	#print 'setting price for ' + symbol + ': $' + str(price) 
+	if DEBUG: print 'setting price for {0} date {1}: {2}'.format(symbol, dateint, price)
 	price = 1/price
 	currency = currencies.getCurrencyByIDString(symbol)
 	if not currency:
 		return
+
 	if dateint:
 		snapsec = currency.setSnapshotInt(dateint, price)
-		snapsec.syncItem()    
-	currency.setUserRate(price)
-	currency.syncItem()  
+		snapsec.syncItem()
+	else:   
+		currency.setUserRate(price)
+		currency.syncItem()  
+
+def format_dateint(datestr, delimiter, reverse=False):
+	part = datestr.split(delimiter)
+	if reverse:
+		rez = part[0]+part[1]+part[2] 
+	else:
+		rez = part[2]+part[1]+part[0]
+	return int(rez)
+
+def get_cbr_currency(currency):
+	curdate = datetime.today().strftime('%d/%m/%Y')
+	olddate = (datetime.today()-timedelta(HIST_DEPTH)).strftime('%d/%m/%Y')
+
+	url = 'http://www.cbr.ru/scripts/XML_dynamic.asp?date_req1={0}&date_req2={1}&VAL_NM_RQ={2}'.format(olddate,curdate,CBR_CURRENCY_CODES[currency] )
+	if DEBUG: print url
+
+	f = urlopen(url)
+	data = f.read()
+	root = elementtree.fromstring(data)
+	rez_data = {}
+	for tree in root[::-1]:
+		str_date = format_dateint(datestr = tree.get('Date'), delimiter= '.', reverse=False)
+		val = tree.find('Value').text.replace(",", ".")
+		rez_data[str_date]=val
+		if DEBUG: print str_date, val
+
+	if DEBUG: print rez_data		
+	return rez_data
 
 def loadAccounts(parentAcct):
-	# This function is a derivative of Mike Bray's Moneydance 2015 Security Price Load module (LoadPricesWindow.java) code and has been modified to work in python
-	# Original code located here: https://bitbucket.org/mikerb/moneydance-2015/src/346c42555a9ec4be2b05ef5c4469e183135db4cc/src/com/moneydance/modules/features/securitypriceload/?at=master
-	# Get list of accounts to iterate through
 	sz = parentAcct.getSubAccountCount()
-	i = 0
-	for i in xrange(0,sz):
+	for i in range(sz):
 		acct = parentAcct.getSubAccount(i)
 		if acct.getAccountType() == parentAcct.AccountType.valueOf("SECURITY") :
 			if(acct.getCurrentBalance() != 0 ):
 				ctTicker = acct.getCurrencyType()
-				# print ctTicker.TAG_RELATIVE_TO_CURR, '==========================================='
-				# print ctTicker.getParameter(ctTicker.TAG_RELATIVE_TO_CURR)
-				if (ctTicker != None):
-					if (ctTicker.getTickerSymbol() != ''):
-						listSnap = ctTicker.getSnapshots()
-						iSnapIndex = listSnap.size()-1
-						if (iSnapIndex < 0):
-							mapCurrent.append((ctTicker.getTickerSymbol(), 1.0, ctTicker.getName()))
-							mapDates.append((ctTicker.getTickerSymbol(),0))
-							mapCurrency.append((ctTicker.getTickerSymbol(),ctTicker.getParameter(ctTicker.TAG_RELATIVE_TO_CURR)))
-							mapAccounts.append((ctTicker.getTickerSymbol(),acct))
+				Ticker = ctTicker.getTickerSymbol()
+
+				if Ticker not in SECURITY_EXCLUDE_LIST:
+					listSnap = ctTicker.getSnapshots()
+					iSnapIndex = listSnap.size()-1
+
+					FullName=ctTicker.getName()
+					Currency = ctTicker.getParameter(ctTicker.TAG_RELATIVE_TO_CURR)
+					if Currency is None:
+						print '  >>> ERROR. No Currency. Ticker {0}'.format(Ticker)
+						raise ('ERROR. No Currency')
+					if (iSnapIndex < 0):
+						DateInt = 0
+						Price = 1.0
+					else:
+						ctssLast = listSnap.get(iSnapIndex)
+						if (ctssLast != None):
+							DateInt = ctssLast.getDateInt()
+							Price = 1.0/ctssLast.getUserRate()
 						else:
-							ctssLast = listSnap.get(iSnapIndex)
-							if (ctssLast != None):
-								mapCurrent.append((ctTicker.getTickerSymbol(),1.0/ctssLast.getUserRate(),ctTicker.getName()))
-							mapDates.append((ctTicker.getTickerSymbol(), ctssLast.getDateInt()))
-							mapCurrency.append((ctTicker.getTickerSymbol(),ctTicker.getParameter(ctTicker.TAG_RELATIVE_TO_CURR)))
-							mapAccounts.append((ctTicker.getTickerSymbol(), acct))
+							DateInt = 0
+							Price = 1.0
+					AccountsSecurityList[Ticker] = dict(Ticker = Ticker, FullName=FullName, Currency=Currency, Price=Price, DateInt=DateInt)
+					print Ticker, dict(Ticker = Ticker, FullName=FullName, Currency=Currency, Price=Price, DateInt=DateInt)
+					
 		loadAccounts(acct)
 
 def buildUrl(func, symbol, apikey):
 	# Creates url used for JSON quote return
 	# Visit www.alphavantage.co to obtain a free api key
 	url = 'https://www.alphavantage.co/query?function=' + func + symbol + '&outputsize=compact&apikey=' + apikey
-	# print url
 	return url
 
 def getLastRefreshedTimeSeries(func, symbol, apikey):
 	url = buildUrl(func, symbol, apikey)
 	print url
-
+	
+	time.sleep(TIME_DELAY_SEC)
 	req = Request(url)
 
 	# Attempt to open the URL, print errors if there are any, otherwise read results 
@@ -143,101 +211,175 @@ def getLastRefreshedTimeSeries(func, symbol, apikey):
 	# convert from JSON data to Python dict and return to calling program
 	return json.loads(content)
 
-def date_to_int(date):
-	part = date.split("-")
-	return int(part[0]+part[1]+part[2])
+def get_local_security_data(ticker):
+	if DEBUG: print 'LOAD locally'
+	
+	curdate = datetime.today().strftime('%Y-%m-%d')
+	olddate = (datetime.today()-timedelta(HIST_DEPTH)).strftime('%Y-%m-%d')
 
-#===============================================================================
-# Iterate through symbols here
-root=moneydance.getCurrentAccountBook()
-ra = root.getRootAccount() 
-
-loadAccounts(ra)
-
-print '- START ------------------------------------------------------------------------------------'
-# Update all currencies we can find with most recent currency quote
-func = 'CURRENCY_EXCHANGE_RATE&to_currency=RUB&from_currency='
-
-currencylist = root.getCurrencies().getAllCurrencies()
-
-for currency in currencylist:
-	if (currency.getCurrencyType() == currency.getCurrencyType().valueOf("CURRENCY")):
-		symbol = currency.getIDString()
-		name = currency.getName()
-		print symbol, name
-		try:
-			time.sleep(TIME_DELAY_SEC)
-			getCurrency = getLastRefreshedTimeSeries(func, symbol, apikey)
-			print getCurrency
-			recentCurrencyDate = str(getCurrency['Realtime Currency Exchange Rate']['6. Last Refreshed'])[:10]
-			close = float(getCurrency['Realtime Currency Exchange Rate']['5. Exchange Rate'])
-			part = recentCurrencyDate.split("-")
-			lastRefreshDate = part[0]+part[1]+part[2]
-			lastRefreshDate = int(lastRefreshDate)
-			setPriceForCurrency(root.getCurrencies(), symbol, close, lastRefreshDate)
-			setPriceForCurrency(root.getCurrencies(), symbol, close, 0)
-			print 'Currency %s (%s) - updated on %s: RUB %s'%(name,symbol,recentCurrencyDate,close)
-		except:
-			print 'Currency %s (%s) - Invalid currency'%(name,symbol)
-
-print '- SECURITY -------------------------------------------------------------------------------'
-
-# security update
-for security, sDate, acct, curr in zip(mapCurrent, mapDates, mapAccounts, mapCurrency)[:]:
-	symbol = security[0]
-	# if symbol not in ['MTSS.ME']:
-	if symbol in ['MY_001',
-				  # 'SNGSP.ME',
-				  # 'GXC','SCHR','SCHM','SCHH','VSS',
-				  # 'IAU','ERUS','EWY',
-				  # 'FXDE.ME','FXJP.ME',
-				  # 'MTSS.ME','MOEX.ME','NLMK.ME','SBERP.ME',
-				  # 'FXRU.ME','FXRL.ME','FXCN.ME','FXRU.ME',
-				  # 'FXIT.ME',
-				  '' ]:
-		continue
-	name = security[2]
-	func = 'TIME_SERIES_DAILY&symbol='
-	# 
-	recentQuoteDate = sDate[1]   # Set recentQuoteDate to the last security updated date just in case getQuote fails
-	# print security, curr, sDate
-	hist_data = []
-	skip = False   # Set to True when data needed for update fails
-	print '\n'
+	hist_data = {}
+	error = False   # Set to True when data needed for update fails
 
 	try:
-		time.sleep(TIME_DELAY_SEC)
-		getQuote = getLastRefreshedTimeSeries(func, symbol, apikey)
+		filename = os.path.join(FILESPATH, FILES[ticker])
+		f = open(filename)
+
+		for st in f.readlines():
+			data = st.split(',')
+			if data[0]>=olddate:
+				QuoteDate = format_dateint(datestr=data[0], delimiter='-', reverse=True)
+				hist_data[data[0]]= dict(dateint = QuoteDate, 
+										 close = float(data[4]), 
+										 vol = long(data[5]))
+		f.close()
+
+		last_date = sorted(hist_data, reverse=True)[0]
+		recentQuoteDate = hist_data[last_date]['dateint']
+		last_close = hist_data[last_date]['close']
+		last_volume = hist_data[last_date]['vol']
+		hist_data[0]= dict(dateint = recentQuoteDate, close = last_close, vol = last_volume)	
+		
+		if DEBUG: print hist_data
+
+	except Exception as e:
+		error = True
+		print '\n>> ERROR---- LOAD locally. Security {0}: Invalid ticker symbol'.format(
+				symbol.encode('utf-8')
+				).decode('utf-8')
+		print '>> ERROR: {0} \n'.format(e)
+	return hist_data, error
+
+def get_internet_security_data(ticker):
+	if DEBUG: print 'LOAD from Internet'
+	hist_data = {}
+	error = False   # Set to True when data needed for update fails
+	try:
+		getQuote = getLastRefreshedTimeSeries(SEC_FUNC, ticker, APIKEY)
+
 		recentQuoteDate = str(getQuote['Meta Data']['3. Last Refreshed'])[:10]
 		last_close = float(getQuote['Time Series (Daily)'][recentQuoteDate]['4. close'])
 		last_volume = long(float(getQuote['Time Series (Daily)'][recentQuoteDate]['5. volume']))
-		# load history date to hist_data[]
+
+		recentQuoteDate = format_dateint(datestr=recentQuoteDate, delimiter='-', reverse=True)
+
+		# load last data to hist_data[]		
+		hist_data[0] = dict(dateint = recentQuoteDate, close = last_close, vol = last_volume)
+
+		# load history date to hist_data[]		
 		dates = getQuote['Time Series (Daily)'].keys()
 		dates.sort(reverse=False)
 		for cdate in dates[-HIST_DEPTH:]:
 			close = float(getQuote['Time Series (Daily)'][cdate]['4. close'])
 			volume = long(float(getQuote['Time Series (Daily)'][cdate]['5. volume']))
-			hist_data.append((cdate, date_to_int(cdate), close, volume))
+			hist_data[cdate]=dict(dateint = format_dateint(datestr=cdate, delimiter='-', reverse=True), close = close, vol = volume)
 		# print symbol, close, high, low, volume , recentQuoteDate
-	except:
-		skip = True
-		print name, symbol
-		print '     >>>  ---ERROR---- Security {0} ({1}): Invalid ticker symbol'.format(
-				name.encode('utf-8'),
+		if DEBUG: print hist_data
+
+	except Exception as e:
+		error = True
+		print '\n>> ERROR---- LOAD from Internet. Security {0}: Invalid ticker symbol'.format(
 				symbol.encode('utf-8')
 				).decode('utf-8')
+		print '>> ERROR: {0} \n'.format(e)
+	return hist_data, error
 
-	# if not already updated or override has been specified AND retrieval didn't fail
-	if (recentQuoteDate != sDate[1] or override) and not skip:
-		rel_curr = curr[1]
-		RefreshDate = date_to_int(recentQuoteDate)
+def get_security_data(ticker):
+	if ticker in FILES:
+		return get_local_security_data(ticker)
+	else:
+		return get_internet_security_data(ticker)
 
-		if len(hist_data)>0:
-			for QuoteDate, RefreshDate, close, volume in hist_data:
-				print 'Security {0} Date: {1} - {2}  {4}   vol:{3}'.format(symbol, QuoteDate, close, volume, root.getCurrencies().getCurrencyByIDString(rel_curr))
-				setPriceForSecurity(root.getCurrencies(), symbol, close, volume, RefreshDate, rel_curr)
+#===============================================================================
+#===============================================================================
+root=moneydance.getCurrentAccountBook()
+ra = root.getRootAccount() 
 
-		setPriceForSecurity(root.getCurrencies(), symbol, last_close, last_volume, 0, rel_curr)
-		print 'DONE - Security %s (%s):- updated on %s: %s %s( V:%s )'%(name,symbol,recentQuoteDate,root.getCurrencies().getCurrencyByIDString(rel_curr),close,volume)
-		skip = False
+loadAccounts(ra)
+
+print '- START -----------------------------------------------------------------------------------------------------'
+print '- CURRENCY --------------------------------------------------------------------------------------------------'
+# Update all currencies we can find with most recent currency quote
+DEF_CURRENCY = 'RUB'
+
+# take only CURRENCY excluding DEF_CURRENCY
+currencylist = [x for x in root.getCurrencies().getAllCurrencies() 
+				if x.getCurrencyType() == x.getCurrencyType().valueOf("CURRENCY") 
+				and x.getIDString()!=DEF_CURRENCY]
+
+for currency in currencylist:
+	symbol = currency.getIDString()
+	name = currency.getName()
+
+	try:
+		print 'Currency: {1}. ({0})'.format(symbol, name)
+		rez = get_cbr_currency(symbol)
+		
+		# dates
+		for dateint in rez.keys():
+			close = float(rez[dateint])
+			print '	date {0} set {1} value'.format(dateint, close)
+			setPriceForCurrency(root.getCurrencies(), symbol, close, dateint)
+		
+		# last close
+		last_close = rez[max(rez.keys())]  # max date value
+		last_close = float(last_close)
+		setPriceForCurrency(root.getCurrencies(), symbol, last_close, 0)
+	
+	except Exception as e:
+		print '\n>> ERROR: Currency {0} ({1}) - Invalid currency'.format(name,symbol)
+		print '>> ERROR: {0} \n'.format(e)
+
+print '- SECURITY ------------------------------------------------------------------------------------------------------'
+print '      Total {} securitis to update'.format(len(AccountsSecurityList))
+
+for symbol in AccountsSecurityList.keys():
+	# if symbol not in ['FXCN.ME']:
+	# if symbol in ['MY_001',
+				  # 'SNGSP.ME',
+				  # 'GXC','SCHR','SCHM','SCHH','VSS',
+				  # 'IAU','ERUS','EWY',
+				  # 'FXRU.ME','FXRL.ME','FXCN.ME','FXRU.ME',
+				  # 'FXIT.ME',
+				  # '' ]:
+		# continue
+
+	name = AccountsSecurityList[symbol]['FullName']
+	print symbol, name
+
+	# get data
+	hist_data, skip = get_security_data(symbol)
+
+	# # if not already updated or override has been specified AND retrieval didn't fail
+	if not skip:
+		if (hist_data[0]['dateint'] != AccountsSecurityList[symbol]['DateInt'] or OVERRIDE):
+			rel_curr = AccountsSecurityList[symbol]['Currency']
+
+			if len(hist_data)>1:
+				for date in sorted(hist_data.keys()): 
+					if date not in [0]:
+						print '   Security {0} Date: {1} - {2}  {4}'.format(symbol, 
+																				   hist_data[date]['dateint'], 
+																				   hist_data[date]['close'], 
+																				   0, #hist_data[date]['vol'], 
+																				   root.getCurrencies().getCurrencyByIDString(rel_curr))
+						
+						setPriceForSecurity(root.getCurrencies(), 
+											symbol, 
+											hist_data[date]['close'], 
+											0, #hist_data[date]['vol'], 
+											hist_data[date]['dateint'],
+											rel_curr)
+
+			setPriceForSecurity(root.getCurrencies(), 
+								symbol, 
+								hist_data[0]['close'], 
+								0, #hist_data[0]['vol'], 
+								0,
+								rel_curr)
+			print '   DONE - Security {0}:- updated on {1}: {2} {3}'.format(symbol,
+																			 hist_data[0]['dateint'],
+																			 root.getCurrencies().getCurrencyByIDString(rel_curr),
+																			 hist_data[0]['close'])
+
+
 
