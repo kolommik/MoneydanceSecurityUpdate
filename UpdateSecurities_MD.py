@@ -23,7 +23,7 @@ except ImportError:
 APIKEY = 'YOUR API KEY'
 
 OVERRIDE = True   # used to add quote information even if data for date already exists
-HIST_DEPTH = 30   # how many history days we want to get for load
+HIST_DEPTH = 35   # how many history days we want to get for load
 
 IF_ERROR_REPAT_TIMES = 1  # always =1. Times to resend information
 
